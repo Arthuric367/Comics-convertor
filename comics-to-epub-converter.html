@@ -1,0 +1,952 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Comics Converter — EPUB &amp; CBZ</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: rgba(255, 255, 255, 0.97);
+            border-radius: 20px;
+            padding: 40px;
+            max-width: 720px;
+            width: 100%;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+            animation: fadeIn 0.6s ease;
+        }
+
+        h1 {
+            margin-bottom: 8px;
+            font-size: 2.4em;
+            text-align: center;
+            background: linear-gradient(135deg, #e94560 0%, #0f3460 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 0.95em;
+        }
+
+        .form-group {
+            margin-bottom: 22px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #333;
+            font-weight: 600;
+            font-size: 0.95em;
+        }
+
+        input[type="text"] {
+            width: 100%;
+            padding: 12px 16px;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            font-size: 1em;
+            transition: all 0.3s ease;
+            font-family: inherit;
+        }
+
+        input[type="text"]:focus {
+            outline: none;
+            border-color: #e94560;
+            box-shadow: 0 0 0 3px rgba(233, 69, 96, 0.1);
+        }
+
+        /* Options row */
+        .options-row {
+            display: flex;
+            gap: 16px;
+        }
+
+        .options-row .form-group {
+            flex: 1;
+        }
+
+        .radio-group {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .radio-option {
+            flex: 1;
+            min-width: 100px;
+        }
+
+        .radio-option input[type="radio"] {
+            display: none;
+        }
+
+        .radio-option label {
+            display: block;
+            padding: 10px 14px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-weight: 500;
+            font-size: 0.9em;
+            color: #555;
+            margin-bottom: 0;
+        }
+
+        .radio-option input[type="radio"]:checked + label {
+            border-color: #e94560;
+            background: rgba(233, 69, 96, 0.08);
+            color: #e94560;
+            font-weight: 600;
+        }
+
+        .radio-option label:hover {
+            border-color: #e94560;
+            color: #e94560;
+        }
+
+        /* EPUB-only options — dimmed when CBZ-only is selected */
+        #epubOptions {
+            transition: opacity 0.25s ease;
+        }
+
+        #epubOptions.hidden {
+            opacity: 0.35;
+            pointer-events: none;
+        }
+
+        /* File input */
+        .file-input-wrapper {
+            position: relative;
+            display: inline-block;
+            width: 100%;
+        }
+
+        .file-input-wrapper input[type="file"] {
+            position: absolute;
+            left: -9999px;
+        }
+
+        .file-input-label {
+            display: block;
+            padding: 22px;
+            background: linear-gradient(135deg, #e94560 0%, #0f3460 100%);
+            color: white;
+            text-align: center;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: 600;
+            font-size: 1.05em;
+        }
+
+        .file-input-label:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(233, 69, 96, 0.4);
+        }
+
+        .file-input-label:active {
+            transform: translateY(0);
+        }
+
+        .file-count {
+            margin-top: 12px;
+            padding: 12px;
+            background: #f5f5f5;
+            border-radius: 8px;
+            text-align: center;
+            color: #666;
+            font-size: 0.95em;
+        }
+
+        .file-count.has-files {
+            background: rgba(233, 69, 96, 0.08);
+            color: #e94560;
+            font-weight: 600;
+        }
+
+        /* Generate button */
+        .generate-btn {
+            width: 100%;
+            padding: 16px;
+            background: linear-gradient(135deg, #e94560 0%, #0f3460 100%);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 1.1em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-top: 8px;
+        }
+
+        .generate-btn:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(233, 69, 96, 0.4);
+        }
+
+        .generate-btn:active:not(:disabled) {
+            transform: translateY(0);
+        }
+
+        .generate-btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
+        /* Progress */
+        .progress-container {
+            display: none;
+            margin-top: 20px;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: #e0e0e0;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #e94560 0%, #0f3460 100%);
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+
+        .progress-text {
+            text-align: center;
+            margin-top: 10px;
+            color: #666;
+            font-size: 0.9em;
+        }
+
+        /* Download fallback area */
+        .download-area {
+            display: none;
+            margin-top: 20px;
+        }
+
+        .download-area-title {
+            text-align: center;
+            color: #666;
+            margin-bottom: 12px;
+            font-size: 0.95em;
+        }
+
+        .download-file-row {
+            margin-bottom: 14px;
+        }
+
+        .download-file-label {
+            font-size: 0.85em;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 6px;
+        }
+
+        .download-buttons {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .download-btn-alt {
+            flex: 1;
+            min-width: 120px;
+            padding: 10px 14px;
+            border: none;
+            border-radius: 8px;
+            font-size: 0.88em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            color: white;
+        }
+
+        .download-btn-alt:hover {
+            transform: translateY(-1px);
+            filter: brightness(1.1);
+        }
+
+        .btn-green { background: #4CAF50; }
+        .btn-blue  { background: #2196F3; }
+
+        .download-hint {
+            text-align: center;
+            font-size: 0.78em;
+            color: #aaa;
+            margin-top: 6px;
+        }
+
+        /* Info box */
+        .info-box {
+            background: linear-gradient(135deg, rgba(233, 69, 96, 0.07) 0%, rgba(15, 52, 96, 0.07) 100%);
+            border-left: 4px solid #e94560;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 22px;
+            font-size: 0.9em;
+            color: #555;
+            line-height: 1.7;
+        }
+
+        .info-box strong {
+            color: #e94560;
+        }
+
+        .badge {
+            display: inline-block;
+            background: linear-gradient(135deg, #e94560 0%, #0f3460 100%);
+            color: white;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.78em;
+            font-weight: 700;
+            vertical-align: middle;
+            margin-left: 4px;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>🦸 Comics Converter</h1>
+        <p class="subtitle">Export images as <strong>EPUB 3</strong> (fixed-layout) and/or <strong>CBZ</strong> with metadata</p>
+
+        <form id="epubForm">
+            <div class="form-group">
+                <label for="bookTitle">Book Title</label>
+                <input type="text" id="bookTitle" placeholder="Enter comic title..." required>
+            </div>
+
+            <div class="form-group">
+                <label for="authorName">Author / Artist Name</label>
+                <input type="text" id="authorName" placeholder="Enter author name..." required>
+            </div>
+
+            <!-- Export format -->
+            <div class="form-group">
+                <label>Export Format</label>
+                <div class="radio-group">
+                    <div class="radio-option">
+                        <input type="radio" id="fmtEpub" name="exportFormat" value="epub" checked>
+                        <label for="fmtEpub">📘 EPUB 3</label>
+                    </div>
+                    <div class="radio-option">
+                        <input type="radio" id="fmtCbz" name="exportFormat" value="cbz">
+                        <label for="fmtCbz">📦 CBZ</label>
+                    </div>
+                    <div class="radio-option">
+                        <input type="radio" id="fmtBoth" name="exportFormat" value="both">
+                        <label for="fmtBoth">✨ Both</label>
+                    </div>
+                </div>
+            </div>
+
+            <!-- EPUB-only options (dimmed when CBZ-only) -->
+            <div id="epubOptions">
+            <div class="options-row">
+                <!-- Background colour -->
+                <div class="form-group">
+                    <label>Page Background <span style="font-weight:400;color:#888;font-size:0.85em">(EPUB only)</span></label>
+                    <div class="radio-group">
+                        <div class="radio-option">
+                            <input type="radio" id="bgBlack" name="bgColor" value="black" checked>
+                            <label for="bgBlack">⬛ Black</label>
+                        </div>
+                        <div class="radio-option">
+                            <input type="radio" id="bgWhite" name="bgColor" value="white">
+                            <label for="bgWhite">⬜ White</label>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Image fit -->
+                <div class="form-group">
+                    <label>Image Fit <span style="font-weight:400;color:#888;font-size:0.85em">(EPUB only)</span></label>
+                    <div class="radio-group">
+                        <div class="radio-option">
+                            <input type="radio" id="fitContain" name="imageFit" value="contain" checked>
+                            <label for="fitContain">🔲 Contain</label>
+                        </div>
+                        <div class="radio-option">
+                            <input type="radio" id="fitFill" name="imageFit" value="fill">
+                            <label for="fitFill">📐 Fill</label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            </div><!-- /epubOptions -->
+
+            <div class="form-group">
+                <label>Select Images (PNG or JPEG)</label>
+                <div class="file-input-wrapper">
+                    <input type="file" id="imageInput" accept=".png,.jpg,.jpeg" multiple required>
+                    <label for="imageInput" class="file-input-label">
+                        📁 Choose Image Files (up to 500)
+                    </label>
+                </div>
+                <div class="file-count" id="fileCount">No files selected</div>
+            </div>
+
+            <button type="submit" class="generate-btn" id="generateBtn">
+                📘 Generate EPUB
+            </button>
+        </form>
+
+        <div class="progress-container" id="progressContainer">
+            <div class="progress-bar">
+                <div class="progress-fill" id="progressFill"></div>
+            </div>
+            <div class="progress-text" id="progressText">Processing...</div>
+        </div>
+
+        <div class="download-area" id="downloadArea">
+            <p class="download-area-title">Download didn't start automatically? Use a fallback:</p>
+            <div id="downloadFileList"></div>
+            <p class="download-hint">Open DevTools (F12) → Console for detailed logs</p>
+        </div>
+
+        <div class="info-box">
+            <strong>📖 Format guide:</strong><br>
+            • <strong>EPUB 3</strong> — fixed-layout, pinch-to-zoom support, works in Panels, KyBook, Moon+ Reader, Kobo, Lithium<br>
+            • <strong>CBZ</strong> — ZIP of images + <code>ComicInfo.xml</code> metadata; universal support in all dedicated comics apps (CDisplayEx, Chunky, Perfect Viewer, Kavita, Komga…)<br>
+            • Images are sorted naturally by filename (1.png, 2.png … 10.png, not 1, 10, 2)<br>
+            • First image is used as the cover<br>
+            • <em>Contain</em> preserves aspect ratio with letterboxing; <em>Fill</em> stretches to fill the full screen (EPUB only)
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"
+        integrity="sha512-XMVd28F1oH/O71fzwBnV7HucLxVwtxf26XV8P4wPk26EDxuGZ91N8bsOttmnomcCD3CS5ZMRL50H0GgOHvegtg=="
+        crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"
+        integrity="sha512-Qlv6VSKh1gDKGoJbnyA5RMXYcvnpIqhO++MhIM2fStMcGT9i2T//tSwYFlcyoRRDcDZ+TYHpH8azBBCyhpSeA=="
+        crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <script>
+        // ─── DOM refs ────────────────────────────────────────────────────────────────
+        const form              = document.getElementById('epubForm');
+        const imageInput        = document.getElementById('imageInput');
+        const fileCount         = document.getElementById('fileCount');
+        const generateBtn       = document.getElementById('generateBtn');
+        const progressContainer = document.getElementById('progressContainer');
+        const progressFill      = document.getElementById('progressFill');
+        const progressText      = document.getElementById('progressText');
+        const downloadArea      = document.getElementById('downloadArea');
+        const downloadFileList  = document.getElementById('downloadFileList');
+        const epubOptions       = document.getElementById('epubOptions');
+
+        // lastDownloads: array of { blob, filename } — populated after generation
+        let lastDownloads = [];
+
+        // ─── Helpers ────────────────────────────────────────────────────────────────
+        function log(msg, data) {
+            const ts = new Date().toLocaleTimeString();
+            data ? console.log(`[${ts}] ${msg}`, data) : console.log(`[${ts}] ${msg}`);
+        }
+
+        function updateProgress(pct, text) {
+            progressFill.style.width = pct + '%';
+            progressText.textContent  = text;
+            log(`Progress ${pct}% — ${text}`);
+        }
+
+        function generateUUID() {
+            return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+                const r = Math.random() * 16 | 0;
+                return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+            });
+        }
+
+        function getTimestamp() {
+            return new Date().toISOString().split('.')[0] + 'Z';
+        }
+
+        function escapeXML(str) {
+            return str.replace(/[<>&'"]/g, c => ({
+                '<': '&lt;', '>': '&gt;', '&': '&amp;',
+                "'": '&apos;', '"': '&quot;'
+            }[c]));
+        }
+
+        function sanitizeFilename(str) {
+            return str.replace(/[<>:"/\\|?*\x00-\x1F]/g, '_').trim();
+        }
+
+        // Natural sort: 1, 2, 10 not 1, 10, 2
+        function naturalSort(a, b) {
+            return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
+        }
+
+        /**
+         * Returns the pixel dimensions of an image File without adding it to the DOM.
+         * Falls back to 1200×1800 if the image can't be decoded.
+         */
+        function getImageDimensions(file) {
+            return new Promise(resolve => {
+                const url = URL.createObjectURL(file);
+                const img = new Image();
+                img.onload = () => {
+                    URL.revokeObjectURL(url);
+                    resolve({ width: img.naturalWidth, height: img.naturalHeight });
+                };
+                img.onerror = () => {
+                    URL.revokeObjectURL(url);
+                    resolve({ width: 1200, height: 1800 });
+                };
+                img.src = url;
+            });
+        }
+
+        // ─── Format selector — show/hide EPUB options & update button label ────────
+        function getSelectedFormat() {
+            return document.querySelector('input[name="exportFormat"]:checked').value;
+        }
+
+        function syncUI() {
+            const fmt = getSelectedFormat();
+            epubOptions.classList.toggle('hidden', fmt === 'cbz');
+            const labels = { epub: '📘 Generate EPUB', cbz: '📦 Generate CBZ', both: '✨ Generate EPUB + CBZ' };
+            generateBtn.textContent = labels[fmt];
+        }
+
+        document.querySelectorAll('input[name="exportFormat"]').forEach(r => r.addEventListener('change', syncUI));
+        syncUI();
+
+        // ─── File picker ────────────────────────────────────────────────────────────
+        imageInput.addEventListener('change', function () {
+            const n = this.files.length;
+            if (n > 0) {
+                fileCount.textContent = `${n} file${n !== 1 ? 's' : ''} selected`;
+                fileCount.classList.add('has-files');
+            } else {
+                fileCount.textContent = 'No files selected';
+                fileCount.classList.remove('has-files');
+            }
+        });
+
+        // ─── Build download fallback buttons ─────────────────────────────────────────
+        function renderDownloadFallbacks(downloads) {
+            downloadFileList.innerHTML = '';
+            downloads.forEach(({ blob, filename }) => {
+                const row = document.createElement('div');
+                row.className = 'download-file-row';
+
+                const lbl = document.createElement('div');
+                lbl.className = 'download-file-label';
+                lbl.textContent = filename;
+                row.appendChild(lbl);
+
+                const btns = document.createElement('div');
+                btns.className = 'download-buttons';
+
+                const b1 = document.createElement('button');
+                b1.className = 'download-btn-alt btn-green';
+                b1.textContent = '📥 Method 1 (Blob)';
+                b1.onclick = () => {
+                    try { saveAs(blob, filename); }
+                    catch (e) { log('saveAs failed', e); alert('Method 1 failed — try Method 2.'); }
+                };
+
+                const b2 = document.createElement('button');
+                b2.className = 'download-btn-alt btn-blue';
+                b2.textContent = '📥 Method 2 (Data URI)';
+                b2.onclick = () => {
+                    const reader = new FileReader();
+                    reader.readAsDataURL(blob);
+                    reader.onloadend = () => {
+                        const link = document.createElement('a');
+                        link.href = reader.result;
+                        link.download = filename;
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+                        log('Data URI download triggered for ' + filename);
+                    };
+                };
+
+                btns.appendChild(b1);
+                btns.appendChild(b2);
+                row.appendChild(btns);
+                downloadFileList.appendChild(row);
+            });
+        }
+
+        // ─── Form submit ─────────────────────────────────────────────────────────────
+        form.addEventListener('submit', async function (e) {
+            e.preventDefault();
+
+            const title   = document.getElementById('bookTitle').value.trim();
+            const author  = document.getElementById('authorName').value.trim();
+            const files   = Array.from(imageInput.files);
+            const fmt     = getSelectedFormat();
+            const bgColor = document.querySelector('input[name="bgColor"]:checked').value;
+            const fitMode = document.querySelector('input[name="imageFit"]:checked').value;
+
+            if (!title || !author || files.length === 0) {
+                alert('Please fill in all fields and select at least one image.');
+                return;
+            }
+            if (files.length > 500) {
+                alert('Maximum 500 images allowed.');
+                return;
+            }
+
+            files.sort(naturalSort);
+            lastDownloads = [];
+            downloadArea.style.display = 'none';
+            downloadFileList.innerHTML = '';
+            generateBtn.disabled = true;
+            progressContainer.style.display = 'block';
+            updateProgress(0, 'Initialising…');
+
+            try {
+                if (fmt === 'epub' || fmt === 'both') {
+                    const pctOffset = fmt === 'both' ? 0  : 0;
+                    const pctRange  = fmt === 'both' ? 50 : 100;
+                    const epubBlob  = await generateComicsEPUB(title, author, files, bgColor, fitMode, pctOffset, pctRange);
+                    const epubName  = `${sanitizeFilename(title)}.epub`;
+                    lastDownloads.push({ blob: epubBlob, filename: epubName });
+                    triggerDownload(epubBlob, epubName);
+                }
+
+                if (fmt === 'cbz' || fmt === 'both') {
+                    const pctOffset = fmt === 'both' ? 50 : 0;
+                    const pctRange  = fmt === 'both' ? 50 : 100;
+                    const cbzBlob   = await generateCBZ(title, author, files, pctOffset, pctRange);
+                    const cbzName   = `${sanitizeFilename(title)}.cbz`;
+                    lastDownloads.push({ blob: cbzBlob, filename: cbzName });
+                    triggerDownload(cbzBlob, cbzName);
+                }
+
+                updateProgress(100, `Done! ${lastDownloads.map(d => d.filename).join(' + ')} ✓`);
+                renderDownloadFallbacks(lastDownloads);
+                downloadArea.style.display = 'block';
+            } catch (err) {
+                console.error(err);
+                alert('Error: ' + err.message);
+                progressContainer.style.display = 'none';
+            } finally {
+                setTimeout(() => { generateBtn.disabled = false; }, 1000);
+            }
+        });
+
+        function triggerDownload(blob, filename) {
+            try { saveAs(blob, filename); log(`Download triggered: ${filename}`); }
+            catch (e) { log('Auto-download failed for ' + filename, e); }
+        }
+
+        // ═════════════════════════════════════════════════════════════════════════
+        // EPUB 3 fixed-layout generation
+        // ═════════════════════════════════════════════════════════════════════════
+        async function generateComicsEPUB(title, author, files, bgColor, fitMode, pctOffset, pctRange) {
+            log('Starting EPUB generation…');
+            const zip       = new JSZip();
+            const uuid      = generateUUID();
+            const timestamp = getTimestamp();
+
+            updateProgress(pctOffset + pctRange * 0.02, 'Creating EPUB structure…');
+
+            // ── mimetype (must be STORE, first entry) ──────────────────────────────
+            zip.file('mimetype', 'application/epub+zip', { compression: 'STORE' });
+
+            // ── META-INF/container.xml ─────────────────────────────────────────────
+            zip.folder('META-INF').file('container.xml',
+`<?xml version="1.0" encoding="UTF-8"?>
+<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+  <rootfiles>
+    <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
+  </rootfiles>
+</container>`);
+
+            const oebps  = zip.folder('OEBPS');
+            const imgDir = oebps.folder('images');
+
+            // ── Process images ─────────────────────────────────────────────────────
+            const pageData = [];   // { id, pageId, imageName, mimeType, width, height }
+
+            for (let i = 0; i < files.length; i++) {
+                if (i % 5 === 0) {
+                    updateProgress(
+                        pctOffset + pctRange * (0.05 + (i / files.length) * 0.65),
+                        `EPUB: reading image ${i + 1} of ${files.length}…`
+                    );
+                }
+
+                const file    = files[i];
+                const ext     = file.name.toLowerCase().split('.').pop();
+                const isJpeg  = ext === 'jpg' || ext === 'jpeg';
+                const imgName = `image${i + 1}.${isJpeg ? 'jpg' : 'png'}`;
+                const mime    = isJpeg ? 'image/jpeg' : 'image/png';
+
+                // Read pixel dimensions
+                const { width, height } = await getImageDimensions(file);
+
+                // Add raw image bytes
+                imgDir.file(imgName, await file.arrayBuffer());
+
+                pageData.push({
+                    id:        `image${i + 1}`,
+                    pageId:    `page${i + 1}`,
+                    imageName: imgName,
+                    mimeType:  mime,
+                    width,
+                    height,
+                    isCover:   i === 0,
+                });
+            }
+
+            updateProgress(pctOffset + pctRange * 0.72, 'EPUB: building XHTML pages…');
+
+            // ── XHTML page per image ───────────────────────────────────────────────
+            for (const p of pageData) {
+                const xhtml = buildPageXHTML(p, title, bgColor, fitMode);
+                oebps.file(`${p.pageId}.xhtml`, xhtml);
+            }
+
+            updateProgress(pctOffset + pctRange * 0.80, 'EPUB: creating OPF metadata…');
+
+            // ── content.opf ────────────────────────────────────────────────────────
+            oebps.file('content.opf', buildContentOPF(pageData, title, author, uuid, timestamp));
+
+            updateProgress(pctOffset + pctRange * 0.86, 'EPUB: creating navigation…');
+
+            // ── nav.xhtml (EPUB 3, required) ───────────────────────────────────────
+            oebps.file('nav.xhtml', buildNavXHTML(pageData, title));
+
+            // ── toc.ncx (EPUB 2 compatibility) ─────────────────────────────────────
+            oebps.file('toc.ncx', buildTocNCX(pageData, title, uuid));
+
+            updateProgress(pctOffset + pctRange * 0.90, 'EPUB: packaging…');
+
+            const blob = await zip.generateAsync({
+                type:               'blob',
+                mimeType:           'application/epub+zip',
+                compression:        'DEFLATE',
+                compressionOptions: { level: 6 },
+            });
+
+            log(`EPUB size: ${(blob.size / 1024 / 1024).toFixed(2)} MB`);
+            updateProgress(pctOffset + pctRange * 0.98, 'EPUB ready.');
+            return blob;
+        }
+
+        // ═════════════════════════════════════════════════════════════════════════
+        // CBZ generation
+        // ═════════════════════════════════════════════════════════════════════════
+        async function generateCBZ(title, author, files, pctOffset, pctRange) {
+            log('Starting CBZ generation…');
+            const zip = new JSZip();
+
+            // ComicInfo.xml — ComicRack metadata standard
+            // Supported by: Panels, Chunky, CDisplayEx, Perfect Viewer, Kavita, Komga, etc.
+            zip.file('ComicInfo.xml', buildComicInfoXML(title, author, files.length));
+
+            // Zero-pad image names so every reader sorts them correctly (001.jpg not 1.jpg)
+            const padLen = String(files.length).length;
+
+            for (let i = 0; i < files.length; i++) {
+                if (i % 5 === 0) {
+                    updateProgress(
+                        pctOffset + pctRange * (0.05 + (i / files.length) * 0.88),
+                        `CBZ: adding image ${i + 1} of ${files.length}…`
+                    );
+                }
+                const file    = files[i];
+                const ext     = file.name.toLowerCase().split('.').pop();
+                const isJpeg  = ext === 'jpg' || ext === 'jpeg';
+                const padded  = String(i + 1).padStart(padLen, '0');
+                const imgName = `${padded}.${isJpeg ? 'jpg' : 'png'}`;
+
+                // STORE: images are already compressed — no benefit from DEFLATE
+                zip.file(imgName, await file.arrayBuffer(), { compression: 'STORE' });
+            }
+
+            updateProgress(pctOffset + pctRange * 0.94, 'CBZ: packaging…');
+            const blob = await zip.generateAsync({ type: 'blob', mimeType: 'application/x-cbz' });
+            log(`CBZ size: ${(blob.size / 1024 / 1024).toFixed(2)} MB`);
+            updateProgress(pctOffset + pctRange * 0.98, 'CBZ ready.');
+            return blob;
+        }
+
+        // ComicInfo.xml — ComicRack / Anansi metadata schema
+        function buildComicInfoXML(title, author, pageCount) {
+            return `<?xml version="1.0" encoding="UTF-8"?>
+<ComicInfo xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+           xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <Title>${escapeXML(title)}</Title>
+  <Writer>${escapeXML(author)}</Writer>
+  <PageCount>${pageCount}</PageCount>
+  <Manga>No</Manga>
+</ComicInfo>`;
+        }
+
+        // ─── XHTML page builder ──────────────────────────────────────────────────────
+        function buildPageXHTML({ pageId, imageName, width, height }, title, bgColor, fitMode) {
+            const pageNum = pageId.replace('page', '');
+            const bg      = bgColor === 'black' ? '#000000' : '#ffffff';
+            // 'contain' = preserve aspect ratio (letterbox); 'fill' = stretch to fill
+            const objectFit = fitMode === 'fill' ? 'fill' : 'contain';
+
+            return `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
+<head>
+  <meta charset="UTF-8"/>
+  <title>Page ${pageNum}</title>
+  <meta name="viewport" content="width=${width}, height=${height}"/>
+  <style type="text/css">
+    html, body {
+      width:            ${width}px;
+      height:           ${height}px;
+      margin:           0;
+      padding:          0;
+      overflow:         hidden;
+      background-color: ${bg};
+    }
+    img {
+      display:    block;
+      width:      ${width}px;
+      height:     ${height}px;
+      object-fit: ${objectFit};
+    }
+  </style>
+</head>
+<body>
+  <img src="images/${imageName}" alt="Page ${pageNum}"/>
+</body>
+</html>`;
+        }
+
+        // ─── content.opf builder ─────────────────────────────────────────────────────
+        function buildContentOPF(pages, title, author, uuid, timestamp) {
+            const manifestItems = pages.flatMap(p => [
+                `    <item id="${p.id}" href="images/${p.imageName}" media-type="${p.mimeType}"${p.isCover ? ' properties="cover-image"' : ''}/>`,
+                `    <item id="${p.pageId}" href="${p.pageId}.xhtml" media-type="application/xhtml+xml"/>`,
+            ]);
+
+            const spineItems = pages.map(p => `    <itemref idref="${p.pageId}"/>`);
+
+            return `<?xml version="1.0" encoding="UTF-8"?>
+<package xmlns="http://www.idpf.org/2007/opf"
+         xmlns:dc="http://purl.org/dc/elements/1.1/"
+         version="3.0"
+         unique-identifier="uuid_id">
+
+  <metadata>
+    <dc:identifier id="uuid_id">urn:uuid:${uuid}</dc:identifier>
+    <dc:title>${escapeXML(title)}</dc:title>
+    <dc:creator>${escapeXML(author)}</dc:creator>
+    <dc:language>en</dc:language>
+    <meta property="dcterms:modified">${timestamp}</meta>
+
+    <!-- Fixed-layout metadata — essential for comics readers -->
+    <meta property="rendition:layout">pre-paginated</meta>
+    <meta property="rendition:spread">none</meta>
+    <meta property="rendition:orientation">auto</meta>
+  </metadata>
+
+  <manifest>
+    <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>
+    <item id="ncx" href="toc.ncx"  media-type="application/x-dtbncx+xml"/>
+${manifestItems.join('\n')}
+  </manifest>
+
+  <!-- page-progression-direction: ltr = Western (left-to-right) reading order -->
+  <spine toc="ncx" page-progression-direction="ltr">
+${spineItems.join('\n')}
+  </spine>
+
+  <guide>
+    <reference type="cover" title="Cover" href="page1.xhtml"/>
+  </guide>
+
+</package>`;
+        }
+
+        // ─── nav.xhtml builder (EPUB 3 required) ────────────────────────────────────
+        function buildNavXHTML(pages, title) {
+            const items = pages.map(p =>
+                `      <li><a href="${p.pageId}.xhtml">Page ${p.pageId.replace('page', '')}</a></li>`
+            ).join('\n');
+
+            return `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
+<head>
+  <meta charset="UTF-8"/>
+  <title>${escapeXML(title)}</title>
+</head>
+<body>
+  <nav epub:type="toc" id="toc">
+    <ol>
+${items}
+    </ol>
+  </nav>
+  <nav epub:type="landmarks" id="landmarks">
+    <ol>
+      <li><a epub:type="cover" href="page1.xhtml">Cover</a></li>
+    </ol>
+  </nav>
+</body>
+</html>`;
+        }
+
+        // ─── toc.ncx builder (EPUB 2 compatibility) ──────────────────────────────────
+        function buildTocNCX(pages, title, uuid) {
+            const navPoints = pages.map((p, i) => {
+                const n = i + 1;
+                return `  <navPoint id="navPoint-${n}" playOrder="${n}">
+    <navLabel><text>Page ${n}</text></navLabel>
+    <content src="${p.pageId}.xhtml"/>
+  </navPoint>`;
+            }).join('\n');
+
+            return `<?xml version="1.0" encoding="UTF-8"?>
+<ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1">
+  <head>
+    <meta name="dtb:uid"            content="urn:uuid:${uuid}"/>
+    <meta name="dtb:depth"          content="1"/>
+    <meta name="dtb:totalPageCount" content="0"/>
+    <meta name="dtb:maxPageNumber"  content="0"/>
+  </head>
+  <docTitle><text>${escapeXML(title)}</text></docTitle>
+  <navMap>
+${navPoints}
+  </navMap>
+</ncx>`;
+        }
+    </script>
+</body>
+
+</html>
