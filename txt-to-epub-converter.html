@@ -1,0 +1,887 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TXT → EPUB Converter</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #0d1b2a 0%, #1b2838 50%, #162032 100%);
+            min-height: 100vh;
+            padding: 20px 20px 60px;
+            color: #333;
+        }
+
+        .container { max-width: 900px; margin: 0 auto; }
+
+        h1 {
+            text-align: center;
+            font-size: 2.2em;
+            padding: 28px 0 6px;
+            background: linear-gradient(135deg, #64b5f6, #ce93d8);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #90a4b7;
+            margin-bottom: 28px;
+            font-size: 0.92em;
+        }
+
+        /* ── Drop Zone ── */
+        .drop-zone {
+            border: 2.5px dashed #4a6fa5;
+            border-radius: 16px;
+            padding: 36px 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.25s;
+            background: rgba(255,255,255,0.04);
+            color: #90a4b7;
+            margin-bottom: 22px;
+        }
+        .drop-zone:hover, .drop-zone.drag-over {
+            border-color: #64b5f6;
+            background: rgba(100,181,246,0.08);
+            color: #64b5f6;
+        }
+        .drop-zone .dz-icon { font-size: 2.4em; margin-bottom: 8px; }
+        .drop-zone p { font-size: 1em; margin-bottom: 6px; }
+        .drop-zone .hint { font-size: 0.8em; opacity: 0.7; }
+
+        /* ── Book List ── */
+        .book-list { display: flex; flex-direction: column; gap: 14px; }
+
+        /* ── Book Card ── */
+        .book-card {
+            background: rgba(255,255,255,0.97);
+            border-radius: 14px;
+            overflow: hidden;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+            animation: fadeIn 0.3s ease;
+        }
+
+        .book-card-header {
+            display: flex;
+            align-items: center;
+            padding: 13px 16px;
+            cursor: pointer;
+            gap: 13px;
+            user-select: none;
+            transition: background 0.15s;
+        }
+        .book-card-header:hover { background: rgba(100,181,246,0.06); }
+
+        .book-thumbnail {
+            width: 46px; height: 62px;
+            border-radius: 4px;
+            background: #e8eaf6;
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5em;
+            overflow: hidden;
+        }
+        .book-thumbnail img { width: 100%; height: 100%; object-fit: cover; }
+
+        .book-header-info { flex: 1; min-width: 0; }
+        .book-header-info .bk-title {
+            font-size: 1.02em; font-weight: 600; color: #1a1a2e;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .book-header-info .bk-filename { font-size: 0.8em; color: #999; }
+
+        .book-header-actions { display: flex; gap: 8px; align-items: center; flex-shrink: 0; }
+
+        .status-badge {
+            font-size: 0.72em; padding: 3px 9px;
+            border-radius: 20px; font-weight: 600;
+        }
+        .status-badge.pending   { background: #fff3e0; color: #e65100; }
+        .status-badge.done      { background: #e8f5e9; color: #2e7d32; }
+        .status-badge.error     { background: #ffebee; color: #b71c1c; }
+        .status-badge.processing{ background: #e3f2fd; color: #0d47a1; }
+
+        .toggle-icon { color: #aaa; font-size: 0.9em; transition: transform 0.25s; }
+        .book-card.expanded .toggle-icon { transform: rotate(180deg); }
+
+        /* ── Book Form ── */
+        .book-form {
+            display: none;
+            padding: 18px 18px 22px;
+            border-top: 1px solid #f0f0f0;
+            gap: 16px;
+            flex-direction: row;
+        }
+        .book-card.expanded .book-form { display: flex; }
+
+        /* Cover column */
+        .cover-col { flex-shrink: 0; width: 124px; display: flex; flex-direction: column; gap: 7px; }
+
+        .cover-preview {
+            width: 124px; height: 172px;
+            border-radius: 8px;
+            background: #eef0f8;
+            display: flex; align-items: center; justify-content: center;
+            cursor: pointer;
+            overflow: hidden;
+            border: 2px dashed #ccc;
+            transition: border-color 0.2s;
+        }
+        .cover-preview:hover { border-color: #64b5f6; }
+        .cover-preview img { width: 100%; height: 100%; object-fit: cover; }
+        .cover-placeholder { text-align: center; color: #bbb; font-size: 0.75em; padding: 8px; }
+        .cover-placeholder-icon { font-size: 2em; margin-bottom: 4px; }
+
+        .btn-cover {
+            padding: 5px 0;
+            background: #f5f5f5;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.78em;
+            color: #666;
+            text-align: center;
+            transition: background 0.15s;
+        }
+        .btn-cover:hover { background: #e8eaf6; color: #333; }
+
+        /* Meta column */
+        .meta-col { flex: 1; display: flex; flex-direction: column; gap: 11px; min-width: 0; }
+
+        .form-row { display: flex; gap: 10px; }
+
+        .form-group { flex: 1; display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+        .form-group label {
+            font-size: 0.72em; color: #999; font-weight: 700;
+            text-transform: uppercase; letter-spacing: 0.5px;
+        }
+        .form-group input, .form-group select {
+            padding: 7px 9px;
+            border: 1.5px solid #e2e2e2;
+            border-radius: 7px;
+            font-size: 0.9em;
+            color: #333;
+            background: #fafafa;
+            transition: border-color 0.18s;
+            width: 100%;
+        }
+        .form-group input:focus, .form-group select:focus {
+            outline: none; border-color: #64b5f6; background: #fff;
+        }
+        .form-group .field-hint { font-size: 0.7em; color: #bbb; }
+
+        .form-actions { display: flex; gap: 9px; align-items: center; margin-top: 2px; flex-wrap: wrap; }
+
+        .btn-gen {
+            padding: 8px 20px;
+            background: linear-gradient(135deg, #42a5f5, #7c4dff);
+            color: #fff; border: none; border-radius: 7px;
+            cursor: pointer; font-size: 0.9em; font-weight: 700;
+            transition: opacity 0.18s, transform 0.1s;
+        }
+        .btn-gen:hover { opacity: 0.88; transform: translateY(-1px); }
+        .btn-gen:active { transform: translateY(0); }
+        .btn-gen:disabled { opacity: 0.45; cursor: default; transform: none; }
+
+        .btn-remove {
+            padding: 8px 14px;
+            background: transparent; color: #e57373;
+            border: 1.5px solid #e57373;
+            border-radius: 7px; cursor: pointer; font-size: 0.82em;
+            transition: background 0.15s;
+        }
+        .btn-remove:hover { background: #ffebee; }
+
+        .chapter-count { font-size: 0.75em; color: #aaa; font-style: italic; }
+
+        /* ── Bottom Bar ── */
+        .bottom-bar {
+            margin-top: 22px;
+            display: flex; flex-direction: column; align-items: center; gap: 10px;
+        }
+        .progress-text { font-size: 0.85em; color: #90a4b7; min-height: 18px; }
+
+        .btn-gen-all {
+            padding: 12px 38px;
+            background: linear-gradient(135deg, #42a5f5, #7c4dff);
+            color: #fff; border: none; border-radius: 10px;
+            cursor: pointer; font-size: 1em; font-weight: 700;
+            box-shadow: 0 4px 16px rgba(124,77,255,0.35);
+            transition: opacity 0.18s, transform 0.1s;
+        }
+        .btn-gen-all:hover { opacity: 0.9; transform: translateY(-2px); }
+        .btn-gen-all:disabled { opacity: 0.45; cursor: default; transform: none; }
+
+        /* ── Animations ── */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(8px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+
+        /* ── Responsive ── */
+        @media (max-width: 580px) {
+            .book-form { flex-direction: column; }
+            .cover-col { width: 100%; flex-direction: row; align-items: flex-start; }
+            .cover-preview { width: 90px; height: 126px; }
+            .form-row { flex-direction: column; gap: 8px; }
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+
+    <h1>📖 TXT → EPUB Converter</h1>
+    <p class="subtitle">Batch-convert novels with cover, metadata &amp; chapter navigation — fully in-browser, nothing uploaded</p>
+
+    <div class="drop-zone" id="dropZone">
+        <div class="dz-icon">📂</div>
+        <p>Drag &amp; drop your <strong>.txt</strong> files here</p>
+        <p class="hint">or click to select multiple files at once</p>
+        <input type="file" id="fileInput" accept=".txt" multiple style="display:none">
+    </div>
+
+    <div class="book-list" id="bookList"></div>
+
+    <div class="bottom-bar" id="bottomBar" style="display:none">
+        <p class="progress-text" id="progressText"></p>
+        <button class="btn-gen-all" id="btnGenAll" onclick="generateAll()">⚡ Generate All EPUBs</button>
+    </div>
+
+</div>
+
+<script>
+// ─── State ────────────────────────────────────────────────────────────────────
+let books = [];
+let bookIdCounter = 0;
+
+// ─── Drop Zone ────────────────────────────────────────────────────────────────
+const dropZone = document.getElementById('dropZone');
+const fileInput = document.getElementById('fileInput');
+
+dropZone.addEventListener('click', () => fileInput.click());
+fileInput.addEventListener('change', e => { addFiles(e.target.files); fileInput.value = ''; });
+
+dropZone.addEventListener('dragover',  e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop', e => {
+    e.preventDefault();
+    dropZone.classList.remove('drag-over');
+    addFiles(Array.from(e.dataTransfer.files).filter(f => f.name.toLowerCase().endsWith('.txt')));
+});
+
+// ─── Add Files ────────────────────────────────────────────────────────────────
+function addFiles(fileList) {
+    Array.from(fileList).forEach(file => {
+        if (!file.name.toLowerCase().endsWith('.txt')) return;
+        const id = ++bookIdCounter;
+        const book = {
+            id,
+            file,
+            filename: file.name,
+            title: file.name.replace(/\.txt$/i, ''),
+            author: '',
+            series: '',
+            seriesIndex: '',
+            tags: '',
+            language: 'zh-TW',
+            encoding: 'UTF-8',
+            coverDataUrl: null,
+            coverBlob: null,
+            coverExt: 'jpg',
+            text: null,
+            chapters: null,
+            status: 'pending',
+        };
+        books.push(book);
+        readTxt(book);
+    });
+    renderNewCards();
+}
+
+function readTxt(book) {
+    const reader = new FileReader();
+    reader.onload  = e => { book.text = e.target.result; book.chapters = parseChapters(book.text); updateChapterCount(book.id); };
+    reader.onerror = () => { book.text = ''; book.chapters = []; updateChapterCount(book.id); };
+    reader.readAsText(book.file, book.encoding);
+}
+
+function reRead(bookId) {
+    const book = books.find(b => b.id === bookId);
+    if (!book) return;
+    book.text = null; book.chapters = null;
+    updateChapterCount(bookId);
+    readTxt(book);
+}
+
+function updateChapterCount(bookId) {
+    const el = document.getElementById('chCount_' + bookId);
+    if (!el) return;
+    const book = books.find(b => b.id === bookId);
+    if (!book || book.chapters === null) { el.textContent = 'Reading…'; return; }
+    const n = book.chapters.length;
+    el.textContent = n + ' chapter' + (n !== 1 ? 's' : '') + ' detected';
+}
+
+// ─── Render ───────────────────────────────────────────────────────────────────
+function renderNewCards() {
+    const list = document.getElementById('bookList');
+    books.forEach(book => {
+        if (!document.getElementById('card_' + book.id)) {
+            list.appendChild(makeCard(book));
+        }
+    });
+    document.getElementById('bottomBar').style.display = books.length ? 'flex' : 'none';
+}
+
+function makeCard(book) {
+    const div = document.createElement('div');
+    div.className = 'book-card';
+    div.id = 'card_' + book.id;
+    const id = book.id;
+
+    div.innerHTML = `
+        <div class="book-card-header" onclick="toggleCard(${id})">
+            <div class="book-thumbnail" id="thumb_${id}"><span>📖</span></div>
+            <div class="book-header-info">
+                <div class="bk-title" id="hTitle_${id}">${esc(book.title)}</div>
+                <div class="bk-filename">${esc(book.filename)}</div>
+            </div>
+            <div class="book-header-actions">
+                <span class="status-badge pending" id="badge_${id}">Pending</span>
+                <span class="toggle-icon">▼</span>
+            </div>
+        </div>
+
+        <div class="book-form" id="form_${id}">
+
+            <!-- Cover -->
+            <div class="cover-col">
+                <div class="cover-preview" id="covPrev_${id}" onclick="pickCover(${id})" title="Click to choose cover">
+                    <div class="cover-placeholder"><div class="cover-placeholder-icon">🖼️</div>Click to add cover</div>
+                </div>
+                <div class="btn-cover" onclick="pickCover(${id})">Choose Cover</div>
+                <input type="file" id="covInput_${id}" accept="image/jpeg,image/png,image/jpg" style="display:none" onchange="handleCover(${id},this)">
+            </div>
+
+            <!-- Metadata -->
+            <div class="meta-col">
+
+                <div class="form-row">
+                    <div class="form-group" style="flex:2">
+                        <label>Title</label>
+                        <input type="text" id="f_title_${id}" value="${escA(book.title)}" oninput="setField(${id},'title',this.value)">
+                    </div>
+                    <div class="form-group" style="flex:1.4">
+                        <label>Author</label>
+                        <input type="text" id="f_author_${id}" value="${escA(book.author)}" oninput="setField(${id},'author',this.value)" placeholder="Author name">
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group" style="flex:2">
+                        <label>Series</label>
+                        <input type="text" id="f_series_${id}" value="${escA(book.series)}" oninput="setField(${id},'series',this.value)" placeholder="Series name (optional)">
+                    </div>
+                    <div class="form-group" style="flex:0.8">
+                        <label>Vol. #</label>
+                        <input type="number" id="f_sidx_${id}" value="${escA(book.seriesIndex)}" oninput="setField(${id},'seriesIndex',this.value)" placeholder="1" min="1" step="0.1">
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group" style="flex:2">
+                        <label>Tags</label>
+                        <input type="text" id="f_tags_${id}" value="${escA(book.tags)}" oninput="setField(${id},'tags',this.value)" placeholder="xianxia, romance, fantasy (comma-separated)">
+                    </div>
+                    <div class="form-group" style="flex:1">
+                        <label>Language</label>
+                        <select id="f_lang_${id}" onchange="setField(${id},'language',this.value)">
+                            <option value="zh-TW" selected>繁體中文</option>
+                            <option value="zh-CN">简体中文</option>
+                            <option value="ja">日本語</option>
+                            <option value="en">English</option>
+                            <option value="ko">한국어</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group" style="flex:1.4">
+                        <label>File Encoding</label>
+                        <select id="f_enc_${id}" onchange="handleEncoding(${id},this.value)">
+                            <option value="UTF-8">UTF-8 (default)</option>
+                            <option value="Big5">Big5 — 繁體中文</option>
+                            <option value="GBK">GBK / GB18030 — 简体中文</option>
+                            <option value="Shift_JIS">Shift-JIS — 日本語</option>
+                            <option value="EUC-JP">EUC-JP — 日本語</option>
+                        </select>
+                        <span class="field-hint">Change if text looks garbled</span>
+                    </div>
+                    <div class="form-group" style="flex:1; justify-content:flex-end; padding-top:18px;">
+                        <span class="chapter-count" id="chCount_${id}">Reading…</span>
+                    </div>
+                </div>
+
+                <div class="form-actions">
+                    <button class="btn-gen" id="btnGen_${id}" onclick="generateOne(${id})">⬇ Generate EPUB</button>
+                    <button class="btn-remove" onclick="removeBook(${id})">✕ Remove</button>
+                </div>
+
+            </div>
+        </div>`;
+
+    return div;
+}
+
+// ─── UI Actions ───────────────────────────────────────────────────────────────
+function toggleCard(id) {
+    document.getElementById('card_' + id).classList.toggle('expanded');
+}
+
+function setField(id, field, value) {
+    const book = books.find(b => b.id === id);
+    if (!book) return;
+    book[field] = value;
+    if (field === 'title') {
+        document.getElementById('hTitle_' + id).textContent = value || book.filename;
+    }
+}
+
+function handleEncoding(id, enc) {
+    const book = books.find(b => b.id === id);
+    if (!book) return;
+    book.encoding = enc;
+    reRead(id);
+}
+
+function pickCover(id) { document.getElementById('covInput_' + id).click(); }
+
+function handleCover(id, input) {
+    const file = input.files[0];
+    if (!file) return;
+    const book = books.find(b => b.id === id);
+    if (!book) return;
+    book.coverExt  = file.name.split('.').pop().toLowerCase() === 'png' ? 'png' : 'jpg';
+    book.coverBlob = file;
+    const reader = new FileReader();
+    reader.onload = e => {
+        book.coverDataUrl = e.target.result;
+        document.getElementById('covPrev_' + id).innerHTML = `<img src="${e.target.result}" alt="Cover">`;
+        document.getElementById('thumb_' + id).innerHTML   = `<img src="${e.target.result}" alt="">`;
+    };
+    reader.readAsDataURL(file);
+}
+
+function removeBook(id) {
+    books = books.filter(b => b.id !== id);
+    const card = document.getElementById('card_' + id);
+    if (card) card.remove();
+    document.getElementById('bottomBar').style.display = books.length ? 'flex' : 'none';
+}
+
+function setBadge(id, cls, label) {
+    const el = document.getElementById('badge_' + id);
+    if (!el) return;
+    el.className = 'status-badge ' + cls;
+    el.textContent = label;
+    const book = books.find(b => b.id === id);
+    if (book) book.status = cls;
+}
+
+// ─── Single Generate ──────────────────────────────────────────────────────────
+async function generateOne(id) {
+    const book = books.find(b => b.id === id);
+    if (!book) return;
+    if (!book.text) { alert('File is still being read. Please wait a moment.'); return; }
+    const btn = document.getElementById('btnGen_' + id);
+    btn.disabled = true;
+    setBadge(id, 'processing', 'Generating…');
+    try {
+        const blob = await buildEPUB(book);
+        downloadBlob(blob, safeFilename(book.title || book.filename.replace(/\.txt$/i,'')) + '.epub');
+        setBadge(id, 'done', '✓ Done');
+    } catch (err) {
+        console.error(err);
+        setBadge(id, 'error', '✗ Error');
+        alert('Failed to generate EPUB:\n' + err.message);
+    } finally {
+        btn.disabled = false;
+    }
+}
+
+// ─── Generate All ─────────────────────────────────────────────────────────────
+async function generateAll() {
+    const btn      = document.getElementById('btnGenAll');
+    const progress = document.getElementById('progressText');
+    btn.disabled = true;
+    let done = 0;
+    for (const book of books) {
+        progress.textContent = 'Generating ' + (done + 1) + ' / ' + books.length + ': ' + (book.title || book.filename);
+        if (!book.text) { setBadge(book.id, 'error', '✗ Not ready'); done++; continue; }
+        try {
+            const blob = await buildEPUB(book);
+            downloadBlob(blob, safeFilename(book.title || book.filename.replace(/\.txt$/i,'')) + '.epub');
+            setBadge(book.id, 'done', '✓ Done');
+            await sleep(600); // avoid browser blocking simultaneous downloads
+        } catch (err) {
+            console.error(err);
+            setBadge(book.id, 'error', '✗ Error');
+        }
+        done++;
+    }
+    progress.textContent = 'Done! ' + done + ' EPUB' + (done !== 1 ? 's' : '') + ' generated.';
+    btn.disabled = false;
+}
+
+// ─── Chapter Parsing ──────────────────────────────────────────────────────────
+function parseChapters(text) {
+    text = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    const lines = text.split('\n');
+
+    // Match: 第X章/节/卷/篇/回  (Chinese & Arabic numerals, optional title after)
+    //        Chapter X / CHAPTER X  (English)
+    const headingRe = /^(第\s*[〇一二三四五六七八九十百千萬万零\d]+\s*[章節节卷篇回][^\n]*|Chapter\s+[\d一二三四五六七八九十百千萬万]+[^\n]*|CHAPTER\s+\d+[^\n]*)$/i;
+
+    const chapters = [];
+    let cur = { title: null, lines: [] };
+
+    for (const line of lines) {
+        const t = line.trim();
+        if (t && headingRe.test(t)) {
+            if (cur.title !== null || cur.lines.some(l => l.trim())) chapters.push(cur);
+            cur = { title: t, lines: [] };
+        } else {
+            cur.lines.push(line);
+        }
+    }
+    if (cur.title !== null || cur.lines.some(l => l.trim())) chapters.push(cur);
+    if (chapters.length === 0) chapters.push({ title: null, lines });
+    return chapters;
+}
+
+// ─── EPUB Builder ─────────────────────────────────────────────────────────────
+async function buildEPUB(book) {
+    const zip  = new JSZip();
+    const uid  = uuid();
+    const lang = book.language  || 'zh-TW';
+    const title  = book.title   || 'Untitled';
+    const author = book.author  || 'Unknown';
+    const now  = new Date().toISOString().replace(/\.\d+Z$/, 'Z');
+    const nowDate = now.split('T')[0];
+
+    if (!book.chapters) book.chapters = parseChapters(book.text);
+    const chapters = book.chapters;
+
+    // mimetype — MUST be first AND uncompressed
+    zip.file('mimetype', 'application/epub+zip', { compression: 'STORE' });
+
+    // container.xml
+    zip.file('META-INF/container.xml',
+`<?xml version="1.0" encoding="UTF-8"?>
+<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+  <rootfiles>
+    <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
+  </rootfiles>
+</container>`);
+
+    // CSS
+    zip.file('OEBPS/styles/style.css', buildCSS(lang));
+
+    // Cover image & page
+    let hasCover = false;
+    let coverMime = 'image/jpeg';
+    if (book.coverBlob) {
+        hasCover = true;
+        coverMime = book.coverExt === 'png' ? 'image/png' : 'image/jpeg';
+        zip.file('OEBPS/images/cover.' + book.coverExt, book.coverBlob);
+        zip.file('OEBPS/cover.xhtml', buildCoverPage(book.coverExt, lang));
+    }
+
+    // Chapter XHTML files
+    const chItems = [];
+    chapters.forEach((ch, i) => {
+        const idx      = String(i + 1).padStart(4, '0');
+        const href     = 'chapters/chapter_' + idx + '.xhtml';
+        const chTitle  = ch.title || (chapters.length === 1 ? title : 'Chapter ' + (i + 1));
+        zip.file('OEBPS/' + href, buildChapterXHTML(ch, chTitle, lang));
+        chItems.push({ id: 'ch_' + idx, href, title: chTitle });
+    });
+
+    // Navigation
+    zip.file('OEBPS/nav.xhtml',  buildNav(chItems, hasCover, title, lang));
+    zip.file('OEBPS/toc.ncx',    buildNCX(chItems, uid, title, author));
+
+    // OPF
+    zip.file('OEBPS/content.opf', buildOPF({
+        uid, title, author, lang, now, nowDate,
+        hasCover, coverMime, coverExt: book.coverExt,
+        series: book.series, seriesIndex: book.seriesIndex,
+        tags: book.tags, chItems
+    }));
+
+    return zip.generateAsync({ type: 'blob', mimeType: 'application/epub+zip' });
+}
+
+// ─── CSS ──────────────────────────────────────────────────────────────────────
+function buildCSS(lang) {
+    const fonts = {
+        'zh-TW': '"Noto Serif CJK TC", "Source Han Serif TC", "BiauKai", "PMingLiU", serif',
+        'zh-CN': '"Noto Serif CJK SC", "Source Han Serif SC", "SimSun", "FangSong", serif',
+        'ja':    '"Noto Serif CJK JP", "Source Han Serif JP", "Hiragino Mincho ProN", "Yu Mincho", serif',
+        'ko':    '"Noto Serif CJK KR", "Malgun Gothic", serif',
+    };
+    const fontStack = fonts[lang] || 'Georgia, "Times New Roman", serif';
+
+    return `/* Generated by TXT→EPUB Converter */
+
+:root {
+  --bg:      #ffffff;
+  --text:    #1c1c1e;
+  --heading: #111111;
+  --dim:     #666666;
+  --hr:      #e0e0e0;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg:      #1c1c1e;
+    --text:    #e5e5ea;
+    --heading: #f2f2f7;
+    --dim:     #aeaeb2;
+    --hr:      #3a3a3c;
+  }
+}
+
+body {
+  background-color: var(--bg);
+  color: var(--text);
+  font-family: ${fontStack};
+  font-size: 1em;
+  line-height: 1.95;
+  margin: 1.2em 1.5em;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+
+h1 {
+  color: var(--heading);
+  font-size: 1.35em;
+  font-weight: 700;
+  margin: 0.4em 0 1em;
+  padding-bottom: 0.35em;
+  border-bottom: 1px solid var(--hr);
+  line-height: 1.4;
+}
+
+p {
+  margin: 0 0 0.5em;
+  text-indent: 2em;
+}
+
+p:empty { display: none; }
+
+/* Cover page */
+body.cover-body {
+  margin: 0;
+  padding: 0;
+  background-color: #000;
+}
+.cover-wrap {
+  margin: 0;
+  padding: 0;
+  text-align: center;
+}
+.cover-wrap img {
+  max-width: 100%;
+  max-height: 100vh;
+  object-fit: contain;
+  display: block;
+  margin: 0 auto;
+}
+`;
+}
+
+// ─── Cover Page ───────────────────────────────────────────────────────────────
+function buildCoverPage(ext, lang) {
+    return `<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" xml:lang="${lang}">
+<head>
+  <meta charset="utf-8"/>
+  <title>Cover</title>
+  <link rel="stylesheet" type="text/css" href="styles/style.css"/>
+</head>
+<body class="cover-body">
+  <div class="cover-wrap">
+    <img src="images/cover.${ext}" alt="Cover"/>
+  </div>
+</body>
+</html>`;
+}
+
+// ─── Chapter XHTML ────────────────────────────────────────────────────────────
+function buildChapterXHTML(chapter, chTitle, lang) {
+    const paras = chapter.lines
+        .map(l => l.trim())
+        .filter(l => l.length > 0)
+        .map(l => '  <p>' + xmlEsc(l) + '</p>')
+        .join('\n');
+
+    const titleEl = chapter.title ? '  <h1>' + xmlEsc(chapter.title) + '</h1>\n' : '';
+
+    return `<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" xml:lang="${lang}">
+<head>
+  <meta charset="utf-8"/>
+  <title>${xmlEsc(chTitle)}</title>
+  <link rel="stylesheet" type="text/css" href="../styles/style.css"/>
+</head>
+<body>
+${titleEl}${paras}
+</body>
+</html>`;
+}
+
+// ─── Navigation ───────────────────────────────────────────────────────────────
+function buildNav(chItems, hasCover, title, lang) {
+    const coverLi = hasCover ? '      <li><a href="cover.xhtml">Cover</a></li>\n' : '';
+    const lis = chItems.map(ch => '      <li><a href="' + ch.href + '">' + xmlEsc(ch.title) + '</a></li>').join('\n');
+    return `<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" xml:lang="${lang}">
+<head>
+  <meta charset="utf-8"/>
+  <title>${xmlEsc(title)}</title>
+</head>
+<body>
+  <nav epub:type="toc" id="toc">
+    <h1>Table of Contents</h1>
+    <ol>
+${coverLi}${lis}
+    </ol>
+  </nav>
+</body>
+</html>`;
+}
+
+function buildNCX(chItems, uid, title, author) {
+    const points = chItems.map((ch, i) =>
+`  <navPoint id="np_${i+1}" playOrder="${i+1}">
+    <navLabel><text>${xmlEsc(ch.title)}</text></navLabel>
+    <content src="${ch.href}"/>
+  </navPoint>`).join('\n');
+
+    return `<?xml version="1.0" encoding="utf-8"?>
+<ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1">
+<head>
+  <meta name="dtb:uid" content="${uid}"/>
+  <meta name="dtb:depth" content="1"/>
+  <meta name="dtb:totalPageCount" content="0"/>
+  <meta name="dtb:maxPageNumber" content="0"/>
+</head>
+<docTitle><text>${xmlEsc(title)}</text></docTitle>
+<docAuthor><text>${xmlEsc(author)}</text></docAuthor>
+<navMap>
+${points}
+</navMap>
+</ncx>`;
+}
+
+// ─── OPF ─────────────────────────────────────────────────────────────────────
+function buildOPF({ uid, title, author, lang, now, nowDate, hasCover, coverMime, coverExt, series, seriesIndex, tags, chItems }) {
+
+    const tagsMeta = tags
+        ? tags.split(',').map(t => t.trim()).filter(Boolean)
+              .map(t => '  <dc:subject>' + xmlEsc(t) + '</dc:subject>').join('\n')
+        : '';
+
+    let seriesMeta = '';
+    if (series && series.trim()) {
+        seriesMeta  = '  <meta name="calibre:series" content="' + attrEsc(series) + '"/>';
+        if (seriesIndex) seriesMeta += '\n  <meta name="calibre:series_index" content="' + attrEsc(String(seriesIndex)) + '"/>';
+        seriesMeta += '\n  <meta property="belongs-to-collection" id="col01">' + xmlEsc(series) + '</meta>';
+        seriesMeta += '\n  <meta refines="#col01" property="collection-type">series</meta>';
+        if (seriesIndex) seriesMeta += '\n  <meta refines="#col01" property="group-position">' + xmlEsc(String(seriesIndex)) + '</meta>';
+    }
+
+    const coverItems = hasCover ? `
+    <item id="cover-image" href="images/cover.${coverExt}" media-type="${coverMime}" properties="cover-image"/>
+    <item id="cover-page"  href="cover.xhtml"              media-type="application/xhtml+xml"/>` : '';
+
+    const chManifest = chItems.map(ch =>
+        '    <item id="' + ch.id + '" href="' + ch.href + '" media-type="application/xhtml+xml"/>').join('\n');
+
+    const coverSpine = hasCover ? '    <itemref idref="cover-page"/>\n' : '';
+    const chSpine    = chItems.map(ch => '    <itemref idref="' + ch.id + '"/>').join('\n');
+
+    return `<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="uid" xml:lang="${lang}">
+
+<metadata xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:opf="http://www.idpf.org/2007/opf">
+  <dc:identifier id="uid">${uid}</dc:identifier>
+  <dc:title>${xmlEsc(title)}</dc:title>
+  <dc:creator id="creator01">${xmlEsc(author)}</dc:creator>
+  <meta refines="#creator01" property="role" scheme="marc:relators">aut</meta>
+  <dc:language>${lang}</dc:language>
+  <dc:date>${nowDate}</dc:date>
+  <meta property="dcterms:modified">${now}</meta>
+${tagsMeta}
+${seriesMeta}
+</metadata>
+
+<manifest>
+    <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>
+    <item id="ncx" href="toc.ncx"   media-type="application/x-dtbncx+xml"/>
+    <item id="css" href="styles/style.css" media-type="text/css"/>${coverItems}
+${chManifest}
+</manifest>
+
+<spine toc="ncx">
+${coverSpine}    <itemref idref="nav" linear="no"/>
+${chSpine}
+</spine>
+
+</package>`;
+}
+
+// ─── Utilities ────────────────────────────────────────────────────────────────
+function esc(s)     { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function xmlEsc(s)  { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&apos;'); }
+function attrEsc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;'); }
+function escA(s)    { return String(s||'').replace(/"/g,'&quot;'); }
+
+function safeFilename(name) {
+    return name.replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').trim() || 'novel';
+}
+
+function uuid() {
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+        const r = Math.random() * 16 | 0;
+        return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+    });
+}
+
+function downloadBlob(blob, filename) {
+    const url = URL.createObjectURL(blob);
+    const a   = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1500);
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+</script>
+</body>
+</html>
